@@ -29,15 +29,15 @@
             // 
             // timer
             // 
-            this.timer.Interval = 50;
+            this.timer.Interval = 25;
             this.timer.Tick += new System.EventHandler(this.timer_Tick);
             // 
-            // kMeansClustering
+            // kmcControl
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.DoubleBuffered = true;
-            this.Name = "kMeansClustering";
+            this.Name = "kmcControl";
             this.Size = new System.Drawing.Size(477, 390);
             this.Paint += new System.Windows.Forms.PaintEventHandler(this.kMeansClustering_Paint);
             this.MouseDown += new System.Windows.Forms.MouseEventHandler(this.kMeansClustering_MouseDown);

@@ -10,48 +10,89 @@ using System.Windows.Forms;
 
 namespace kmc {
     public partial class kmcControl : UserControl {
-        public class ProgressUpdatedEventArgs : EventArgs {
-            public int Value { get; set; }
-            public int Maximum { get; set; }
-            public string Text { get; set; }
+        /// <summary>
+        /// Controls how the resulting clustering is displayed
+        /// </summary>
+        private enum eDisplayStyle {
+            /// <summary>
+            /// Draw the region assigned to each cluster
+            /// </summary>
+            Gradient,
+
+            /// <summary>
+            /// Draw the points in different colors according to the assigned cluster
+            /// </summary>
+            Points
         }
-        
-        public event EventHandler<ProgressUpdatedEventArgs> ProgressUpdated;
 
-        private List<PointData> _points = new List<PointData>( );
+        public IEnumerable<PointF> Points { get { return _points; } }
+
+        private List<PointF> _points = new List<PointF>( );
+        private eDisplayStyle _displayStyle = eDisplayStyle.Points;
+        private List<PointF> _centroids;
+        private List<Cluster> _clusters;
+
         private PointF _mousePosition = new PointF( );
-
-        private float _drawRadius = 25;
+        private float _brushRadius = 25;
+        private float _pointRadius = 3;
         private MouseButtons _mouseBtnDown;
         private Random _random = new Random( );
         private Bitmap _bmpGradient;
-        private List<PointF> _lastCentroids;
+
+        private static readonly Brush[ ] _clusterBrushes = new Brush[ ] { 
+                Brushes.LightGreen, Brushes.LightBlue, Brushes.Yellow, Brushes.Red, Brushes.Blue,
+                Brushes.Orange, Brushes.White, Brushes.Black
+            };
 
         public kmcControl( ) {
             InitializeComponent( );
         }
 
-        #region Graphical Management
-        private void kMeansClustering_Paint( object sender, PaintEventArgs e ) {
-            if ( _bmpGradient != null )
-                e.Graphics.DrawImage( _bmpGradient, Point.Empty );
+        public void DisplayGradient( IEnumerable<PointF> centroids ) {
+            _displayStyle = eDisplayStyle.Gradient;
+            _centroids = centroids.ToList( );
+            drawClusterGradient( );
 
-            foreach ( PointData p in _points ) {
-                Brush color = _bmpGradient == null ? p.Brush : Brushes.White;
-
-                e.Graphics.FillEllipse( color, p.Location.X - PointData.Radius,
-                    p.Location.Y - PointData.Radius, 2 * PointData.Radius, 2 * PointData.Radius );
-
-                e.Graphics.DrawEllipse( Pens.Black, p.Location.X - PointData.Radius,
-                    p.Location.Y - PointData.Radius, 2 * PointData.Radius, 2 * PointData.Radius );
-            }
-
-            e.Graphics.DrawEllipse( Pens.Black, _mousePosition.X - _drawRadius,
-                _mousePosition.Y - _drawRadius, 2 * _drawRadius, 2 * _drawRadius );
+            Invalidate( );
         }
 
-        private static float distance( float x1, float y1, float x2, float y2 ) {
-            return ( float ) Math.Sqrt( Math.Pow( x1 - x2, 2 ) + Math.Pow( y1 - y2, 2 ) );
+        public void DisplayColoredPoints( IEnumerable<Cluster> clusters ) {
+            _displayStyle = eDisplayStyle.Points;
+            _clusters = clusters.ToList( );
+
+            Invalidate( );
+        }
+
+        private void kMeansClustering_Paint( object sender, PaintEventArgs e ) {
+            // always draw our points, the old ones will be eventually overwritten
+            foreach ( PointF p in _points )
+                drawPoint( e.Graphics, p, Brushes.Red );
+
+            if ( _displayStyle == eDisplayStyle.Points && _clusters != null ) {
+                foreach ( Tuple<int, Cluster> cluster in _clusters.Enumerate( ) ) {
+                    Brush color = _clusterBrushes[ cluster.Item1 % _clusterBrushes.Length ];
+
+                    foreach ( PointF p in cluster.Item2.Points )
+                        drawPoint( e.Graphics, p, color );
+                }
+            }
+            else if ( _displayStyle == eDisplayStyle.Gradient && _bmpGradient != null ) {
+                e.Graphics.DrawImage( _bmpGradient, Point.Empty );
+
+                foreach ( PointF p in _points )
+                    drawPoint( e.Graphics, p, Brushes.White );
+            }
+
+            e.Graphics.DrawEllipse( Pens.Black, _mousePosition.X - _brushRadius,
+                _mousePosition.Y - _brushRadius, 2 * _brushRadius, 2 * _brushRadius );
+        }
+
+        private void drawPoint( Graphics g, PointF position, Brush color ) {
+            g.FillEllipse( color, position.X - _pointRadius, position.Y - _pointRadius,
+                2 * _pointRadius, 2 * _pointRadius );
+
+            g.DrawEllipse( Pens.Black, position.X - _pointRadius, position.Y - _pointRadius,
+                2 * _pointRadius, 2 * _pointRadius );
         }
 
         private void kMeansClustering_MouseMove( object sender, MouseEventArgs e ) {
@@ -61,34 +102,18 @@ namespace kmc {
             Invalidate( );
         }
 
-        private void onProgressUpdate( int val, int max, string text ) {
-            if ( ProgressUpdated != null ) {
-                ProgressUpdated( this, new ProgressUpdatedEventArgs {
-                    Text = text, Value = val, Maximum = max
-                } );
-            }
-        }
-
         private void drawClusterGradient( ) {
             Bitmap bmp = new Bitmap( Width, Height );
-            this.DrawToBitmap( bmp, new Rectangle( Point.Empty, this.Size ) );
 
             object lockBmp = new object( );
             float maxDist = Math.Max( Width, Height );
 
             Parallel.For( 1, Width, x => {
                 Parallel.For( 1, Height, y => {
-                    float minDist = float.MaxValue;
-                    int minIndex = 0;
-                    for ( int i = 0; i < _lastCentroids.Count; i++ ) {
-                        float dist = distance( x, y, _lastCentroids[ i ].X, _lastCentroids[ i ].Y );
-                        if ( dist < minDist ) {
-                            minDist = dist;
-                            minIndex = i;
-                        }
-                    }
-                    float shade = minDist / maxDist;
-                    Color target = ( PointData.ClusterBrushes[ minIndex ] as SolidBrush ).Color;
+                    Tuple<int, float> nearestCentroid = _centroids.Min( c => c.Distance( new PointF( x, y ) ) );
+
+                    float shade = nearestCentroid.Item2 / maxDist;
+                    Color target = ( _clusterBrushes[ nearestCentroid.Item1 ] as SolidBrush ).Color;
 
                     /*
                     // linear interpolation between target (near) and white (far)
@@ -115,14 +140,12 @@ namespace kmc {
 
         private void timer_Tick( object sender, EventArgs e ) {
             if ( _mouseBtnDown == MouseButtons.Left ) {
-                    _points.Add( new PointData {
-                        Location = new PointF(
-                            _mousePosition.X + 2 * _drawRadius * ( ( float ) _random.NextDouble( ) - 0.5f ),
-                            _mousePosition.Y + 2 * _drawRadius * ( ( float ) _random.NextDouble( ) - 0.5f ) )
-                    } );
+                _points.Add( new PointF(
+                        _mousePosition.X + 2 * _brushRadius * ( ( float ) _random.NextDouble( ) - 0.5f ),
+                        _mousePosition.Y + 2 * _brushRadius * ( ( float ) _random.NextDouble( ) - 0.5f ) ) );
             }
             else if ( _mouseBtnDown == MouseButtons.Right ) {
-                _points.RemoveAll( p => distance( p.Location.X, p.Location.Y, _mousePosition.X, _mousePosition.Y ) < _drawRadius );
+                _points.RemoveAll( p => p.Distance( _mousePosition ) < _brushRadius );
             }
 
             Invalidate( );
@@ -136,121 +159,5 @@ namespace kmc {
         private void kMeansClustering_MouseUp( object sender, MouseEventArgs e ) {
             timer.Stop( );
         }
-        #endregion
-
-        #region K Means Clustering Algorithm
-        /// <summary>
-        /// Find k proper clusters for the current list of points.
-        /// </summary>
-        /// <param name="k">Number of desired clusters</param>
-        /// <returns>The k clusters found.</returns>
-        public IEnumerable<Cluster> ClusterData( int k ) {
-            const int iterations = 50;
-            int iterDone = 0;
-            object lockIter = new object( );
-
-            List<double> allCosts = new List<double>( );
-            List<PointF[ ]> allCentroids = new List<PointF[ ]>( );
-
-            if ( _points.Count == 0 )
-                return null;
-
-            Parallel.For( 0, iterations, i => {
-                double cost;
-                PointF[ ] centr = clusterData( k, out cost );
-
-                if ( !double.IsNaN( cost ) ) {
-                    lock ( lockIter ) {
-                        allCentroids.Add( centr );
-                        allCosts.Add( cost );
-                        iterDone += 1;
-
-                        onProgressUpdate( iterDone, iterations, string.Format( "{0}/{1} iterations done...", iterDone, iterations ) );
-                    }
-                }
-            } );
-
-            PointF[ ] centroids = allCentroids[ allCosts.IndexOf( allCosts.Min( ) ) ];
-            _lastCentroids = centroids.ToList( );
-
-            onProgressUpdate( 100, 100, "Drawing gradient..." );
-            drawClusterGradient( );
-            Invalidate( );
-            onProgressUpdate( 100, 100, string.Format( "Done. Clustering cost: {0:F}", allCosts.Min( ) ) );
-
-            return _points.GroupBy( p => p.Cluster )
-                .Select( c => new Cluster {
-                    Centroid = centroids[ c.Key ],
-                    Points = c as IEnumerable<PointF>
-                } );
-        }
-
-        /// <summary>
-        /// Tries to cluster the points into k clusters.
-        /// </summary>
-        /// <param name="k">Number of clusters</param>
-        /// <param name="cost">The cost found</param>
-        /// <returns>A list of k clusters</returns>
-        private PointF[ ] clusterData( int k, out double cost ) {
-            PointF[ ] centroids = new PointF[ k ];
-            double prevClusteringCost;
-
-            // random initialization
-            cost = double.MaxValue;
-            for ( int i = 0; i < k; i++ )
-                centroids[ i ] = _points[ _random.Next( _points.Count ) ].Location;
-
-            do {
-                prevClusteringCost = cost;
-
-                assignClusters( centroids );
-                for ( int i = 0; i < k; i++ )
-                    centroids[ i ] = mean( _points.Where( p => p.Cluster == i ).Select( p => p.Location ) );
-
-                cost = clusterCost( centroids );
-            } while ( prevClusteringCost - cost > 1 );
-
-            return centroids;
-        }
-
-        /// <summary>
-        /// Assign each point to the nearest cluster.
-        /// </summary>
-        /// <param name="centroids">A list of centroids.</param>
-        private void assignClusters( PointF[ ] centroids ) {
-            Parallel.ForEach( _points, p => {
-                float minDistance = float.MaxValue;
-                int minIndex = 0;
-
-                for ( int i = 0; i < centroids.Length; i++ ) {
-                    float dist = distance( p.Location.X, p.Location.Y, centroids[ i ].X, centroids[ i ].Y );
-                    if ( dist < minDistance ) {
-                        minDistance = dist;
-                        minIndex = i;
-                    }
-                }
-
-                p.Cluster = minIndex;
-            } );
-        }
-
-        /// <summary>
-        /// Find the mean point of the given point cloud
-        /// </summary>
-        /// <param name="points">A set of points</param>
-        /// <returns>The centroid</returns>
-        private static PointF mean( IEnumerable<PointF> points ) {
-            int count = points.Count( );
-            float sumX = points.Sum( p => p.X ),
-                sumY = points.Sum( p => p.Y );
-
-            return new PointF( sumX / count, sumY / count );
-        }
-
-        private double clusterCost( PointF[ ] centroids ) {
-            return ( 1.0 / _points.Count ) * _points.Sum( p => distance( p.Location.X, p.Location.Y,
-                centroids[ p.Cluster ].X, centroids[ p.Cluster ].Y ) );
-        }
-        #endregion
     }
 }

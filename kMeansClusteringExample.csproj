@@ -45,6 +45,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Cluster.cs" />
+    <Compile Include="Extension.cs" />
     <Compile Include="Form1.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -57,8 +58,9 @@
     <Compile Include="kmcControl.Designer.cs">
       <DependentUpon>kmcControl.cs</DependentUpon>
     </Compile>
-    <Compile Include="PointData.cs" />
+    <Compile Include="kMeansClustering.cs" />
     <Compile Include="Program.cs" />
+    <Compile Include="ProgressUpdatedEventArgs.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="Form1.resx">
       <DependentUpon>Form1.cs</DependentUpon>
