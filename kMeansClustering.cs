@@ -40,7 +40,7 @@ namespace kmc {
         /// <param name="k">Number of clusters</param>
         /// <param name="iterations">Runs of kmc; the best clustering found is returned</param>
         /// <returns>The centroids of the k clusters found</returns>
-        public List<PointF> FindCentroids( int k, int iterations = 25 ) {
+        public List<PointF> FindCentroids( int k, int iterations = 100 ) {
             int iterDone = 0;
             object lockIter = new object( );
 
@@ -113,7 +113,8 @@ namespace kmc {
                     centroids[ i ] = mean( _points.Where( p => p.Cluster == i ).Select( p => p.Location ) );
 
                 cost = clusterCost( centroids );
-            } while ( prevClusteringCost - cost > 1 );
+            } while ( ( prevClusteringCost - cost ) / prevClusteringCost > 0.01 );
+            // stop when less than 1% variation
 
             return centroids;
         }

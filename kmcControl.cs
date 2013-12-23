@@ -36,6 +36,7 @@ namespace kmc {
         private float _brushRadius = 25;
         private float _pointRadius = 3;
         private MouseButtons _mouseBtnDown;
+        private bool _removePoints;
         private Random _random = new Random( );
         private Bitmap _bmpGradient;
 
@@ -99,6 +100,9 @@ namespace kmc {
             _mousePosition.X = e.X;
             _mousePosition.Y = e.Y;
 
+            if ( _removePoints )
+                _points.RemoveAll( p => p.Distance( _mousePosition ) < _brushRadius );
+
             Invalidate( );
         }
 
@@ -139,25 +143,24 @@ namespace kmc {
         }
 
         private void timer_Tick( object sender, EventArgs e ) {
-            if ( _mouseBtnDown == MouseButtons.Left ) {
-                _points.Add( new PointF(
-                        _mousePosition.X + 2 * _brushRadius * ( ( float ) _random.NextDouble( ) - 0.5f ),
-                        _mousePosition.Y + 2 * _brushRadius * ( ( float ) _random.NextDouble( ) - 0.5f ) ) );
-            }
-            else if ( _mouseBtnDown == MouseButtons.Right ) {
-                _points.RemoveAll( p => p.Distance( _mousePosition ) < _brushRadius );
-            }
+            _points.Add( new PointF(
+                    _mousePosition.X + 2 * _brushRadius * ( ( float ) _random.NextDouble( ) - 0.5f ),
+                    _mousePosition.Y + 2 * _brushRadius * ( ( float ) _random.NextDouble( ) - 0.5f ) ) );
 
             Invalidate( );
         }
 
         private void kMeansClustering_MouseDown( object sender, MouseEventArgs e ) {
             _mouseBtnDown = e.Button;
-            timer.Start( );
+            if ( _mouseBtnDown == MouseButtons.Left )
+                timer.Start( );
+            else if ( _mouseBtnDown == MouseButtons.Right )
+                _removePoints = true;
         }
 
         private void kMeansClustering_MouseUp( object sender, MouseEventArgs e ) {
             timer.Stop( );
+            _removePoints = false;
         }
     }
 }
