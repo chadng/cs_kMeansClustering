@@ -21,6 +21,7 @@ namespace kmc {
 
             kmc.ProgressUpdated += kmc_ProgressUpdated;
             CheckForIllegalCrossThreadCalls = false;    // temp fix
+            udClusters.Maximum = kmcControl.ClusterBrushes.Length;
         }
 
         private void btnFindClusters_Click( object sender, EventArgs e ) {

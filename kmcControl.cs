@@ -40,7 +40,7 @@ namespace kmc {
         private Random _random = new Random( );
         private Bitmap _bmpGradient;
 
-        private static readonly Brush[ ] _clusterBrushes = new Brush[ ] { 
+        public static readonly Brush[ ] ClusterBrushes = new Brush[ ] { 
                 Brushes.LightGreen, Brushes.LightBlue, Brushes.Yellow, Brushes.Red, Brushes.Blue,
                 Brushes.Orange, Brushes.White, Brushes.Black
             };
@@ -71,7 +71,7 @@ namespace kmc {
 
             if ( _displayStyle == eDisplayStyle.Points && _clusters != null ) {
                 foreach ( Tuple<int, Cluster> cluster in _clusters.Enumerate( ) ) {
-                    Brush color = _clusterBrushes[ cluster.Item1 % _clusterBrushes.Length ];
+                    Brush color = ClusterBrushes[ cluster.Item1 % ClusterBrushes.Length ];
 
                     foreach ( PointF p in cluster.Item2.Points )
                         drawPoint( e.Graphics, p, color );
@@ -111,28 +111,25 @@ namespace kmc {
 
             object lockBmp = new object( );
             float maxDist = Math.Max( Width, Height );
+            double decay = 0.05;
 
             Parallel.For( 1, Width, x => {
                 Parallel.For( 1, Height, y => {
-                    Tuple<int, float> nearestCentroid = _centroids.Min( c => c.Distance( new PointF( x, y ) ) );
+                    var p = new PointF( x, y );
 
-                    float shade = nearestCentroid.Item2 / maxDist;
-                    Color target = ( _clusterBrushes[ nearestCentroid.Item1 ] as SolidBrush ).Color;
+                    var distances = _centroids.Select( ( c, i ) => Tuple.Create( i, Math.Exp( -decay * c.Distance( p ) ) ) );
+                    double norm = distances.Sum( d => d.Item2 );
 
-                    /*
-                    // linear interpolation between target (near) and white (far)
-                    Color col = Color.FromArgb(
-                        Math.Min( 255, target.R + ( int ) ( ( 255 - target.R ) * shade ) ),
-                        Math.Min( 255, target.G + ( int ) ( ( 255 - target.G ) * shade ) ),
-                        Math.Min( 255, target.B + ( int ) ( ( 255 - target.B ) * shade ) ) );
-                    */
+                    double r = 0.0, g = 0.0, b = 0.0;
+                    foreach ( var cluster in distances ) {
+                        var color = ( ClusterBrushes[ cluster.Item1 ] as SolidBrush ).Color;
 
-                    // linear interpolation between target (near) and black (far)
-                    Color col = Color.FromArgb(
-                        Math.Max( 0, ( int ) ( target.R * ( 1 - shade ) ) ),
-                        Math.Max( 0, ( int ) ( target.G * ( 1 - shade ) ) ),
-                        Math.Max( 0, ( int ) ( target.B * ( 1 - shade ) ) ) );
+                        r += cluster.Item2 / norm * color.R;
+                        g += cluster.Item2 / norm * color.G;
+                        b += cluster.Item2 / norm * color.B;
+                    }
 
+                    var col = Color.FromArgb( ( int ) r, ( int ) g, ( int ) b );
 
                     lock ( lockBmp )
                         bmp.SetPixel( x, y, col );
