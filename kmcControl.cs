@@ -124,12 +124,16 @@ namespace kmc {
                     foreach ( var cluster in distances ) {
                         var color = ( ClusterBrushes[ cluster.Item1 ] as SolidBrush ).Color;
 
-                        r += cluster.Item2 / norm * color.R;
-                        g += cluster.Item2 / norm * color.G;
-                        b += cluster.Item2 / norm * color.B;
+                        r += cluster.Item2 * color.R;
+                        g += cluster.Item2 * color.G;
+                        b += cluster.Item2 * color.B;
                     }
 
-                    var col = Color.FromArgb( ( int ) r, ( int ) g, ( int ) b );
+                    var shade = _centroids.Select( c => c.Distance( p ) ).Min() / maxDist;
+                    var col = Color.FromArgb(
+                        Math.Max( 0, ( int ) ( r * ( 1 - shade ) / norm ) ),
+                        Math.Max( 0, ( int ) ( g * ( 1 - shade ) / norm) ),
+                        Math.Max( 0, ( int ) ( b * ( 1 - shade ) / norm ) ) );
 
                     lock ( lockBmp )
                         bmp.SetPixel( x, y, col );
